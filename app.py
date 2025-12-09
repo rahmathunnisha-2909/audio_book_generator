@@ -9,7 +9,7 @@ import base64
 import requests
 from bs4 import BeautifulSoup
 from gtts import gTTS
-from pydub import AudioSegment
+# from pydub import AudioSegment   # ❌ REMOVED – NOT SUPPORTED ON STREAMLIT CLOUD
 
 # ---------------------------
 # CONFIGURATION
@@ -143,28 +143,34 @@ def chunk_text_for_gtts(text, max_length=MAX_TTS_LENGTH):
         chunks.append(current.strip())
     return chunks
 
+# ------------------------------------------------------------------
+# 🔥 FIXED FUNCTION: REMOVED SILENCE, WORKS ON STREAMLIT CLOUD
+# ------------------------------------------------------------------
 def convert_text_to_speech_gtts(text, language="en", storyteller=True):
-    """
-    Convert text to natural human-like audiobook speech using Google TTS.
-    Adds subtle pauses and smooth pacing if storyteller=True.
-    """
     cleaned_text = clean_text_for_tts(text)
     chunks = chunk_text_for_gtts(cleaned_text)
+
+    if not chunks:
+        st.error("No text available to convert to audio.")
+        return None
 
     temp_dir = tempfile.mkdtemp()
     mp3_chunks = []
 
+    # ❌ Removed silent placeholder completely
+
     for i, chunk in enumerate(chunks):
         try:
-            # Add slight pauses to mimic narration style
             if storyteller:
                 chunk = re.sub(r'(?<=[.!?]) ', '. ', chunk)
                 chunk = chunk.replace(',', ', ')
                 chunk = chunk + " ..."
+
             tts = gTTS(text=chunk, lang=language, slow=True)
-            temp_chunk_path = os.path.join(temp_dir, f"chunk_{i}.mp3")
-            tts.save(temp_chunk_path)
-            mp3_chunks.append(temp_chunk_path)
+            chunk_path = os.path.join(temp_dir, f"chunk_{i}.mp3")
+            tts.save(chunk_path)
+            mp3_chunks.append(chunk_path)
+
         except Exception as e:
             st.error(f"Error generating audio for chunk {i+1}: {e}")
 
@@ -172,14 +178,15 @@ def convert_text_to_speech_gtts(text, language="en", storyteller=True):
         st.error("No audio generated.")
         return None
 
-    final_audio = AudioSegment.empty()
-    pause = AudioSegment.silent(duration=700)  # 0.7 sec pause between chunks
-    for chunk_path in mp3_chunks:
-        final_audio += AudioSegment.from_mp3(chunk_path) + pause
-
+    # Merge MP3 chunks directly
     final_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
-    final_audio.export(final_path, format="mp3")
+    with open(final_path, "wb") as outfile:
+        for mp3_file in mp3_chunks:
+            with open(mp3_file, "rb") as f:
+                outfile.write(f.read())
+
     return final_path
+# ------------------------------------------------------------------
 
 # ---------------------------
 # FILE EXTRACTION
@@ -211,12 +218,12 @@ def extract_text_from_docx(file):
 # STREAMLIT UI
 # ---------------------------
 st.title(" AI AUDIOBOOK GENERATOR")
-st.markdown("##### Convert documents and articles into *human-like narrated audiobooks* — free and easy!")
+st.markdown("##### Convert documents and articles into human-like narrated audiobooks — free and easy!")
 
 with st.sidebar:
     st.header("Settings")
-    st.markdown(" *Voice:* Google gTTS (Human-like)")
-    st.markdown(" *Powered by:* Groq + Streamlit")
+    st.markdown(" Voice: Google gTTS (Human-like)")
+    st.markdown(" Powered by: Groq + Streamlit")
     st.markdown("---")
     st.info("Tip: Use en-in for Indian accent or en-uk for British accent.")
 
